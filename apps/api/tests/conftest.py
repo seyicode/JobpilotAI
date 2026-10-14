@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import psycopg
 import pytest
 from alembic import command
@@ -14,10 +15,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from jobpilot.api.routes.jobs import get_ai_extractor
+from jobpilot.api.routes.sources import get_feed_fetcher
 from jobpilot.api.routes.tailored import get_ai_rewriter
 from jobpilot.core.config import get_settings
 from jobpilot.db.session import get_session, sqlalchemy_url
 from jobpilot.main import create_app
+from jobpilot.services.sources.fetcher import FeedFetcher
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,7 +53,7 @@ def test_database_url() -> str:
 def session_factory(test_database_url: str) -> Iterator[sessionmaker[Session]]:
     engine = create_engine(test_database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE resumes, experiences, skills, job_preferences, jobs, ai_usage, ai_cache, profile, tailored_resumes, job_status_events"))
+        connection.execute(text("TRUNCATE resumes, experiences, skills, job_preferences, jobs, ai_usage, ai_cache, profile, tailored_resumes, job_status_events, job_sources, source_runs"))
     yield sessionmaker(engine, expire_on_commit=False)
     engine.dispose()
 
@@ -66,5 +69,11 @@ def db_client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
     # Never reach a real AI provider from tests; AI tests install a fake extractor.
     app.dependency_overrides[get_ai_extractor] = lambda: None
     app.dependency_overrides[get_ai_rewriter] = lambda: None
+    # Never reach a real job board from tests; discovery tests install a fake feed.
+    app.dependency_overrides[get_feed_fetcher] = lambda: FeedFetcher(get_settings(), transport=httpx.MockTransport(_no_network))
     with TestClient(app) as client:
         yield client
+
+
+def _no_network(request):
+    raise AssertionError(f"Unexpected network request to {request.url.host}")

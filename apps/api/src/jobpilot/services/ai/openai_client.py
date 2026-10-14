@@ -18,9 +18,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from jobpilot.core.config import Settings
+from jobpilot.core.logs import quiet_third_party_loggers
 from jobpilot.db.models import AICacheEntry, AIUsage
 
 logger = logging.getLogger(__name__)
+quiet_third_party_loggers()
 
 RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
 MAX_RETRY_AFTER_SECONDS = 5.0

@@ -7,6 +7,7 @@ from jobpilot.api.routes.library import router as library_router
 from jobpilot.api.routes.preferences import router as preferences_router
 from jobpilot.api.routes.profile import router as profile_router
 from jobpilot.api.routes.resumes import router as resumes_router
+from jobpilot.api.routes.sources import router as sources_router
 from jobpilot.api.routes.tailored import router as tailored_router
 from jobpilot.core.config import get_settings
 from jobpilot.services.matching import validate_weights
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(profile_router)
     app.include_router(tailored_router)
+    app.include_router(sources_router)
     return app
 
 

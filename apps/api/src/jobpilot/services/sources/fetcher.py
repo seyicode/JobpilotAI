@@ -16,8 +16,10 @@ from urllib.parse import urlsplit
 import httpx
 
 from jobpilot.core.config import Settings
+from jobpilot.core.logs import quiet_third_party_loggers
 
 logger = logging.getLogger(__name__)
+quiet_third_party_loggers()
 
 USER_AGENT = "JobPilot-AI/0.1 (personal job search; reads public job-board APIs)"
 RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}

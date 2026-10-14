@@ -297,7 +297,7 @@ def _title_component(requirements: JobRequirements, preferences: JobPreferences)
         return _component("title", None, "You have not set target job titles.")
     best, best_target = 0.0, preferences.target_titles[0]
     for target in preferences.target_titles:
-        value = _title_similarity(target, title)
+        value = title_similarity(target, title)
         if value > best:
             best, best_target = value, target
     if best == 1.0:
@@ -307,7 +307,7 @@ def _title_component(requirements: JobRequirements, preferences: JobPreferences)
     return _component("title", 0.0, "Does not match any of your target titles.")
 
 
-def _title_similarity(target: str, title: str) -> float:
+def title_similarity(target: str, title: str) -> float:
     if target.lower() in title.lower():
         return 1.0
     target_words, title_words = _words(target), _words(title)

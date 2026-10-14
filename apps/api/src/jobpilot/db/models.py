@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -97,10 +98,61 @@ class PreferencesRecord(Base):
     )
 
 
+class JobSource(Base):
+    """A company job board the user follows (one provider + board name)."""
+
+    __tablename__ = "job_sources"
+    __table_args__ = (UniqueConstraint("provider", "board", name="uq_job_sources_provider_board"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider: Mapped[str] = mapped_column(String(20))
+    board: Mapped[str] = mapped_column(String(100))
+    company_name: Mapped[str] = mapped_column(String(200))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    interval_minutes: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="new")  # new|healthy|degraded|failing
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(40))
+    last_error_message: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SourceRun(Base):
+    """One fetch of a source's feed. Counts only; no job content."""
+
+    __tablename__ = "source_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("job_sources.id", ondelete="CASCADE"), index=True)
+    trigger: Mapped[str] = mapped_column(String(20))  # manual | scheduled
+    status: Mapped[str] = mapped_column(String(20))  # running | success | failed | skipped
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp(), index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    fetched: Mapped[int] = mapped_column(Integer, default=0)
+    new_jobs: Mapped[int] = mapped_column(Integer, default=0)
+    seen_again: Mapped[int] = mapped_column(Integer, default=0)
+    filtered_out: Mapped[int] = mapped_column(Integer, default=0)
+    archived: Mapped[int] = mapped_column(Integer, default=0)
+    closed: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    error_message: Mapped[str | None] = mapped_column(String(200))
+
+
 class Job(Base):
     """A job posting the user pasted in. The original description is stored unchanged."""
 
     __tablename__ = "jobs"
+    __table_args__ = (
+        Index("uq_jobs_source_posting", "source_id", "source_external_id", unique=True,
+              postgresql_where=text("source_external_id IS NOT NULL")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title: Mapped[str | None] = mapped_column(String(200))
@@ -118,6 +170,15 @@ class Job(Base):
     status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Discovery: where the posting came from and when it was observed in its feed.
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("job_sources.id", ondelete="SET NULL"), index=True
+    )
+    source_external_id: Mapped[str | None] = mapped_column(String(200))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

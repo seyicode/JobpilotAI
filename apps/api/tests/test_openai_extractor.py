@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import httpx
 import pytest
+from fakes import FakeOpenAI, make_settings
 from sqlalchemy import select
 
 from jobpilot.api.routes.jobs import get_ai_extractor
@@ -31,21 +32,6 @@ AI_RESULT = {
 }
 
 
-class FakeOpenAI:
-    """Replays queued responses (or exceptions) and records requests."""
-
-    def __init__(self, *responses):
-        self.responses = list(responses)
-        self.requests: list[httpx.Request] = []
-
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        item = self.responses.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-
 def completion(content: dict | str | None = AI_RESULT, refusal: str | None = None, status: int = 200,
                headers: dict | None = None) -> httpx.Response:
     if status != 200:
@@ -55,15 +41,6 @@ def completion(content: dict | str | None = AI_RESULT, refusal: str | None = Non
         "choices": [{"message": {"content": text, "refusal": refusal}}],
         "usage": {"prompt_tokens": 400, "completion_tokens": 100},
     })
-
-
-def make_settings(**overrides) -> Settings:
-    values = {
-        "openai_api_key": "sk-test-secret", "openai_model": "test-model",
-        "ai_retry_base_delay_seconds": 0.5,
-        "ai_input_cost_per_million_tokens_usd": 1.0, "ai_output_cost_per_million_tokens_usd": 4.0,
-    }
-    return Settings(**(values | overrides))
 
 
 @pytest.fixture

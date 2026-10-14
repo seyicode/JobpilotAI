@@ -14,6 +14,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from jobpilot.api.routes.jobs import get_ai_extractor
+from jobpilot.api.routes.tailored import get_ai_rewriter
 from jobpilot.core.config import get_settings
 from jobpilot.db.session import get_session, sqlalchemy_url
 from jobpilot.main import create_app
@@ -64,5 +65,6 @@ def db_client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
     app.dependency_overrides[get_session] = override
     # Never reach a real AI provider from tests; AI tests install a fake extractor.
     app.dependency_overrides[get_ai_extractor] = lambda: None
+    app.dependency_overrides[get_ai_rewriter] = lambda: None
     with TestClient(app) as client:
         yield client

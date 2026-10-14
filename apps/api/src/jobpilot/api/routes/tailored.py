@@ -24,6 +24,8 @@ from jobpilot.api.routes.profile import load_profile_details
 from jobpilot.core.config import Settings, get_settings
 from jobpilot.db.models import Experience, Job, Skill, TailoredResume
 from jobpilot.db.session import get_session
+from jobpilot.services.ai.openai_client import AIUnavailable
+from jobpilot.services.resumes.ai_rewriter import AIRewriter
 from jobpilot.services.resumes.assembly import assemble_resume
 from jobpilot.services.resumes.export import export_filename, render_docx, render_pdf
 from jobpilot.services.resumes.review import EditRejected, apply_edit, library_conflicts
@@ -34,6 +36,13 @@ router = APIRouter(tags=["tailored resumes"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+def get_ai_rewriter(settings: SettingsDep) -> AIRewriter | None:
+    return AIRewriter(settings) if settings.ai_configured else None
+
+
+RewriterDep = Annotated[AIRewriter | None, Depends(get_ai_rewriter)]
 
 
 class ResumeWarning(BaseModel):
@@ -62,7 +71,11 @@ class VersionDetail(VersionSummary):
 
 
 class GenerateRequest(BaseModel):
-    method: Literal["deterministic"] = "deterministic"
+    method: Literal["deterministic", "ai"] = "deterministic"
+
+
+class AIStatus(BaseModel):
+    available: bool
 
 
 class ApproveRequest(BaseModel):
@@ -70,19 +83,39 @@ class ApproveRequest(BaseModel):
 
 
 @router.post("/jobs/{job_id}/resumes", response_model=VersionDetail, status_code=status.HTTP_201_CREATED)
-def generate(job_id: uuid.UUID, session: SessionDep, settings: SettingsDep,
+def generate(job_id: uuid.UUID, session: SessionDep, settings: SettingsDep, rewriter: RewriterDep,
              payload: GenerateRequest | None = None) -> VersionDetail:
-    """Create a new draft version tailored to the job from your verified library."""
+    """Create a new draft tailored to the job from your verified library.
+
+    With method "ai", bullets are also reworded by AI when configured; any problem falls back to
+    the verified wording, and the version's note says why."""
     job = get_job_or_404(session, job_id)
     content = _assemble(session, job, settings)
-    record = _new_version(session, job.id, content, method="deterministic", based_on=None,
-                          note="Selected and ordered from your verified library. No text was rewritten.")
+    method = "deterministic"
+    note = "Selected and ordered from your verified library. No text was rewritten."
+    if payload and payload.method == "ai":
+        if rewriter is None:
+            note = "AI rewording is not configured, so the verified wording was used unchanged."
+        else:
+            try:
+                content, note = rewriter.rewrite(session, content, stored_requirements(job),
+                                                 verified_skill_names(session))
+                method = "ai"
+            except AIUnavailable as error:
+                note = f"{error} The verified wording was used unchanged."
+    record = _new_version(session, job.id, content, method=method, based_on=None, note=note)
     logger.info(
-        "tailored resume generated job=%s version=%d method=deterministic entries=%d bullets=%d",
-        job.id, record.version, sum(len(s.entries) for s in content.sections),
+        "tailored resume generated job=%s version=%d method=%s entries=%d bullets=%d",
+        job.id, record.version, method, sum(len(s.entries) for s in content.sections),
         sum(1 for _ in content.bullets()),
     )
     return _detail(record)
+
+
+@router.get("/ai/status", response_model=AIStatus)
+def ai_status(settings: SettingsDep) -> AIStatus:
+    """Whether AI features are configured. Never reveals the key or model."""
+    return AIStatus(available=settings.ai_configured)
 
 
 @router.get("/jobs/{job_id}/resumes", response_model=list[VersionSummary])

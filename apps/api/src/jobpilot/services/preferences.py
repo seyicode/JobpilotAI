@@ -106,14 +106,20 @@ class FilterResult:
 def check_hard_filters(preferences: JobPreferences, job: JobFacts) -> list[FilterResult]:
     """Evaluate always-on exclusions plus the user's chosen hard filters, with reasons."""
     results = [_excluded_company(preferences, job), _excluded_keywords(preferences, job)]
-    checks = {
-        "work_arrangement": _work_arrangement,
-        "location": _location,
-        "employment_type": _employment_type,
-        "seniority": _seniority,
-        "min_salary": _min_salary,
-    }
-    results += [checks[name](preferences, job) for name in preferences.hard_filters]
+    results += check_preferences(preferences, job, preferences.hard_filters)
+    return [result for result in results if result is not None]
+
+
+def check_soft_preferences(preferences: JobPreferences, job: JobFacts) -> list[FilterResult]:
+    """The same checks for preferences not marked must-match. These only affect ranking."""
+    soft = [name for name in _CHECKS if name not in preferences.hard_filters]
+    return check_preferences(preferences, job, soft)
+
+
+def check_preferences(
+    preferences: JobPreferences, job: JobFacts, names: list[str]
+) -> list[FilterResult]:
+    results = (_CHECKS[name](preferences, job) for name in names)
     return [result for result in results if result is not None]
 
 
@@ -137,7 +143,7 @@ def _excluded_keywords(p: JobPreferences, job: JobFacts) -> FilterResult | None:
     if not p.exclude_keywords:
         return None
     text = f"{job.title}\n{job.description}"
-    found = [k for k in p.exclude_keywords if _contains_word(text, k)]
+    found = [k for k in p.exclude_keywords if contains_word(text, k)]
     if found:
         return FilterResult("exclude_keywords", "fail", f"Mentions excluded keywords: {', '.join(found)}.")
     return FilterResult("exclude_keywords", "pass", "No excluded keywords found.")
@@ -207,5 +213,14 @@ def _min_salary(p: JobPreferences, job: JobFacts) -> FilterResult | None:
     )
 
 
-def _contains_word(text: str, keyword: str) -> bool:
+_CHECKS = {
+    "work_arrangement": _work_arrangement,
+    "location": _location,
+    "employment_type": _employment_type,
+    "seniority": _seniority,
+    "min_salary": _min_salary,
+}
+
+
+def contains_word(text: str, keyword: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(keyword)}(?!\w)", text, re.IGNORECASE) is not None

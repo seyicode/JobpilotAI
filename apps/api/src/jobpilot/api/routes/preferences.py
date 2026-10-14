@@ -18,6 +18,12 @@ class PreferencesOut(JobPreferences):
     updated_at: datetime | None
 
 
+def load_preferences(session: Session) -> JobPreferences:
+    """Saved preferences with defaults applied, or all defaults if none are saved."""
+    record = session.get(PreferencesRecord, RECORD_ID)
+    return JobPreferences.model_validate(record.data if record else {})
+
+
 @router.get("", response_model=PreferencesOut)
 def get_preferences(session: SessionDep) -> PreferencesOut:
     """Return saved preferences, or defaults if none have been saved."""

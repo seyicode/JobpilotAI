@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     ai_input_cost_per_million_tokens_usd: float | None = Field(default=None, ge=0)
     ai_output_cost_per_million_tokens_usd: float | None = Field(default=None, ge=0)
 
+    # Matching: override factor weights, e.g. MATCH_WEIGHTS={"required_skills": 50}.
+    match_weights: dict[str, float] = Field(default_factory=dict)
+
     # Blank values (e.g. "AI_MONTHLY_BUDGET_USD=") mean "not set".
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 

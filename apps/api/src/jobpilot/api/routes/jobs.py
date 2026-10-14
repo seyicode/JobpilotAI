@@ -10,13 +10,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from jobpilot.api.routes.preferences import load_preferences
 from jobpilot.core.config import Settings, get_settings
-from jobpilot.db.models import Job, Skill
+from jobpilot.db.models import Experience, Job, Skill
 from jobpilot.db.session import get_session
 from jobpilot.services.extraction import ExtractionOutcome, extract_requirements
 from jobpilot.services.extraction.openai_extractor import OpenAIExtractor
 from jobpilot.services.extraction.schema import JobRequirements
 from jobpilot.services.job_ingestion import InvalidJobUrl, canonical_url, description_fingerprint
+from jobpilot.services.matching import MatchResult, VerifiedProfile, match_job
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -58,6 +60,12 @@ class JobSummary(BaseModel):
     source_url: str | None
     extraction_method: str | None
     created_at: datetime
+
+
+class JobListItem(JobSummary):
+    match_score: int | None
+    match_coverage: int
+    eligible: bool
 
 
 class JobDetail(JobSummary):
@@ -110,14 +118,33 @@ def create_job(
     return JobCreateResult(job=JobDetail.model_validate(existing, from_attributes=True), duplicate=True)
 
 
-@router.get("", response_model=list[JobSummary])
-def list_jobs(session: SessionDep) -> list[Job]:
-    return list(session.scalars(select(Job).order_by(Job.created_at.desc())))
+@router.get("", response_model=list[JobListItem])
+def list_jobs(session: SessionDep, settings: Annotated[Settings, Depends(get_settings)]) -> list[JobListItem]:
+    """Newest first, each with its current match score (recomputed; nothing is cached)."""
+    jobs = session.scalars(select(Job).order_by(Job.created_at.desc()))
+    preferences, profile = load_preferences(session), load_profile(session)
+    items = []
+    for job in jobs:
+        result = _match(job, preferences, profile, settings)
+        items.append(JobListItem(
+            **JobSummary.model_validate(job, from_attributes=True).model_dump(),
+            match_score=result.score, match_coverage=result.coverage, eligible=result.eligible,
+        ))
+    return items
 
 
 @router.get("/{job_id}", response_model=JobDetail)
 def get_job(job_id: uuid.UUID, session: SessionDep) -> Job:
     return get_job_or_404(session, job_id)
+
+
+@router.get("/{job_id}/match", response_model=MatchResult)
+def get_match(
+    job_id: uuid.UUID, session: SessionDep, settings: Annotated[Settings, Depends(get_settings)]
+) -> MatchResult:
+    """Deterministic match against your preferences and verified library, with reasons."""
+    job = get_job_or_404(session, job_id)
+    return _match(job, load_preferences(session), load_profile(session), settings)
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -183,3 +210,25 @@ def stored_requirements(job: Job) -> JobRequirements:
         return JobRequirements.model_validate(job.requirements or {})
     except ValidationError:
         return JobRequirements()
+
+
+def load_profile(session: Session) -> VerifiedProfile:
+    skills = list(session.scalars(select(Skill)))
+    experiences = list(session.scalars(select(Experience)))
+
+    def as_dict(e: Experience) -> dict:
+        return {"kind": e.kind, "title": e.title, "organization": e.organization,
+                "start_date": e.start_date, "end_date": e.end_date, "is_current": e.is_current,
+                "highlights": e.highlights}
+
+    return VerifiedProfile(
+        verified_skills=[s.name for s in skills if s.verified],
+        verified_experiences=[as_dict(e) for e in experiences if e.verified],
+        draft_skills=[s.name for s in skills if not s.verified],
+        draft_experiences=[as_dict(e) for e in experiences if not e.verified],
+    )
+
+
+def _match(job: Job, preferences, profile: VerifiedProfile, settings: Settings) -> MatchResult:
+    return match_job(stored_requirements(job), job.description, preferences, profile,
+                     weights=settings.match_weights)

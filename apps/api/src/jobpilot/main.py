@@ -7,9 +7,11 @@ from jobpilot.api.routes.library import router as library_router
 from jobpilot.api.routes.preferences import router as preferences_router
 from jobpilot.api.routes.resumes import router as resumes_router
 from jobpilot.core.config import get_settings
+from jobpilot.services.matching import validate_weights
 
 
 def create_app() -> FastAPI:
+    validate_weights(get_settings().match_weights)  # Fail at startup on a bad MATCH_WEIGHTS
     app = FastAPI(title="JobPilot AI API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,

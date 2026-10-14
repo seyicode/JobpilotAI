@@ -1,4 +1,5 @@
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+import { request } from "@/lib/api";
+
 export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
 export const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
 
@@ -21,20 +22,6 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(API_URL + path, init);
-  } catch {
-    throw new Error("Could not reach the JobPilot API. Is it running?");
-  }
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(typeof body?.detail === "string" ? body.detail : `Request failed (${response.status}).`);
-  }
-  return (response.status === 204 ? undefined : await response.json()) as T;
-}
-
 export const listResumes = () => request<ResumeSummary[]>("/resumes");
 export const getResume = (id: string) => request<ResumeDetail>(`/resumes/${id}`);
 export const deleteResume = (id: string) => request<void>(`/resumes/${id}`, { method: "DELETE" });
@@ -42,4 +29,12 @@ export function uploadResume(file: File) {
   const body = new FormData();
   body.append("file", file);
   return request<ResumeDetail>("/resumes", { method: "POST", body });
+}
+export type ImportResult = { experiences_created: number; skills_created: number; skipped: number };
+export const importResume = (id: string) => request<ImportResult>(`/resumes/${id}/import`, { method: "POST" });
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+export function describeImport(r: ImportResult): string {
+  const created = `Added ${count(r.experiences_created, "draft entry", "draft entries")} and ${count(r.skills_created, "draft skill", "draft skills")}`;
+  return r.skipped ? `${created}; ${r.skipped} already in your library.` : `${created}.`;
 }

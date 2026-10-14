@@ -1,6 +1,6 @@
 import Link from "next/link";
 const steps: { title: string; detail: string; href?: string }[] = [
-  { title: "Your experience", detail: "Upload a resume to start your library of verified skills and accomplishments.", href: "/resumes" },
+  { title: "Your experience", detail: "Upload a resume, then review and verify your skills and accomplishments in your library.", href: "/library" },
   { title: "Your opportunities", detail: "Add job descriptions and explore explainable matches." },
   { title: "Your applications", detail: "Review tailored resumes, then apply manually." },
 ];

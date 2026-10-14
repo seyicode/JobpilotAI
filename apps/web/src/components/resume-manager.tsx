@@ -1,7 +1,8 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ResumeSections } from "@/components/resume-sections";
-import { ACCEPTED_EXTENSIONS, deleteResume, formatBytes, getResume, listResumes, type ResumeDetail, type ResumeSummary, uploadResume, validateResumeFile } from "@/lib/resumes";
+import { ACCEPTED_EXTENSIONS, deleteResume, formatBytes, getResume, describeImport, importResume, type ImportResult, listResumes, type ResumeDetail, type ResumeSummary, uploadResume, validateResumeFile } from "@/lib/resumes";
 
 export function ResumeManager() {
   const [resumes, setResumes] = useState<ResumeSummary[]>([]);
@@ -9,9 +10,10 @@ export function ResumeManager() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imported, setImported] = useState<ImportResult | null>(null);
 
   async function run(action: () => Promise<void>) {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setImported(null);
     try { await action(); } catch (e) { setError(e instanceof Error ? e.message : "Something went wrong."); }
     finally { setBusy(false); }
   }
@@ -27,6 +29,7 @@ export function ResumeManager() {
     void run(async () => { setSelected(await uploadResume(file)); setConfirmingDelete(false); await refresh(); });
   }
   const open = (id: string) => run(async () => { setSelected(await getResume(id)); setConfirmingDelete(false); });
+  const importDrafts = (id: string) => run(async () => setImported(await importResume(id)));
   const remove = (id: string) => run(async () => { await deleteResume(id); setSelected(null); setConfirmingDelete(false); await refresh(); });
 
   return <div className="mt-10 grid gap-8 md:grid-cols-[18rem_1fr]">
@@ -48,12 +51,16 @@ export function ResumeManager() {
     <div>{selected ? <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="truncate text-2xl font-semibold">{selected.filename}</h2>
+        <span className="flex flex-wrap items-center gap-2">
+        <button onClick={() => importDrafts(selected.id)} disabled={busy} className="rounded-lg bg-teal-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">Import into library</button>
         {confirmingDelete
           ? <span className="flex items-center gap-2 text-sm">Delete this resume?
               <button onClick={() => remove(selected.id)} disabled={busy} className="rounded-lg bg-red-700 px-3 py-1.5 font-medium text-white">Delete</button>
               <button onClick={() => setConfirmingDelete(false)} className="rounded-lg border border-slate-300 px-3 py-1.5">Cancel</button></span>
           : <button onClick={() => setConfirmingDelete(true)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:border-red-400 hover:text-red-700">Delete</button>}
+        </span>
       </div>
+      {imported && <p role="status" className="mb-4 rounded-lg bg-teal-50 p-3 text-sm text-teal-900">{describeImport(imported)} <Link href="/library" className="font-semibold underline">Review them in your library →</Link></p>}
       <ResumeSections resume={selected} />
     </> : <p className="rounded-xl border border-slate-200 bg-white p-8 text-slate-600">Upload or select a resume to see what we extracted.</p>}</div>
   </div>;

@@ -11,7 +11,7 @@ cp .env.example .env
 docker compose --env-file .env -f infra/compose.yaml up --build --wait
 ```
 
-Open http://localhost:3000 for the dashboard, http://localhost:3000/resumes to upload a resume, and http://localhost:8000/docs for API documentation. The API applies database migrations automatically when it starts.
+Open http://localhost:3000 for the dashboard, http://localhost:3000/resumes to upload a resume, http://localhost:3000/library to review and verify your experience and skills, and http://localhost:8000/docs for API documentation. The API applies database migrations automatically when it starts.
 
 ```sh
 curl --fail http://localhost:8000/health
@@ -43,6 +43,6 @@ See [local development](docs/local-development.md) for native setup, configurati
 
 ## Scope and principles
 
-Implemented so far: a Next.js/TypeScript/Tailwind dashboard, a modular FastAPI service, PostgreSQL with Alembic migrations, local containers, smoke tests, and resume upload and parsing (PDF, DOCX, or TXT up to 5 MB; text is extracted locally without AI and split into sections; the original file is not stored). No authentication, scraping, AI generation, automatic applications, or paid infrastructure is implemented. Without authentication, anyone who can reach the API can read uploaded resumes, so keep it bound to localhost.
+Implemented so far: a Next.js/TypeScript/Tailwind dashboard, a modular FastAPI service, PostgreSQL with Alembic migrations, local containers, smoke tests, and resume upload and parsing (PDF, DOCX, or TXT up to 5 MB; text is extracted locally without AI and split into sections; the original file is not stored), and a verified experience and skills library. Importing a resume creates draft entries; only entries you verify will be used for tailoring, and editing a verified entry returns it to draft unless you re-verify it. No authentication, scraping, AI generation, automatic applications, or paid infrastructure is implemented. Without authentication, anyone who can reach the API can read uploaded resumes and library entries, so keep it bound to localhost.
 
 Future matching must be explainable. Resume tailoring must use verified experience and never invent qualifications, employers, dates, or accomplishments. Keep future AI requests server-side and protect resumes and personal data.

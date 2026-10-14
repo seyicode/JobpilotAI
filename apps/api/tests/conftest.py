@@ -45,18 +45,21 @@ def test_database_url() -> str:
 
 
 @pytest.fixture
-def db_session(test_database_url: str) -> Iterator[Session]:
+def session_factory(test_database_url: str) -> Iterator[sessionmaker[Session]]:
     engine = create_engine(test_database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE resumes"))
-    with sessionmaker(engine, expire_on_commit=False)() as session:
-        yield session
+        connection.execute(text("TRUNCATE resumes, experiences, skills"))
+    yield sessionmaker(engine, expire_on_commit=False)
     engine.dispose()
 
 
 @pytest.fixture
-def db_client(db_session: Session) -> Iterator[TestClient]:
+def db_client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+    def override() -> Iterator[Session]:
+        with session_factory() as session:  # one session per request, as in production
+            yield session
+
     app = create_app()
-    app.dependency_overrides[get_session] = lambda: db_session
+    app.dependency_overrides[get_session] = override
     with TestClient(app) as client:
         yield client

@@ -8,7 +8,7 @@
 - `apps/api/src/jobpilot/api/routes`: HTTP endpoints.
 - `apps/api/src/jobpilot/core`: shared environment configuration.
 - `apps/api/src/jobpilot/db`: SQLAlchemy engine, sessions, and models.
-- `apps/api/src/jobpilot/services`: business logic, such as `resume_parser.py` (local PDF/DOCX/TXT text extraction and section splitting).
+- `apps/api/src/jobpilot/services`: business logic: `resume_parser.py` (local PDF/DOCX/TXT text extraction and section splitting) and `library_import.py` (heuristics that turn parsed sections into draft experience entries and skills).
 - `apps/api/migrations`: Alembic migrations, applied by `alembic upgrade head` when the API container starts.
 - `apps/api/tests`: API and parser tests. Health tests mock the database; resume API tests use a real `<POSTGRES_DB>_test` database that is created and migrated automatically and skipped if PostgreSQL is unreachable. Test resumes are fictional and built in memory (`tests/samples.py`).
 - `apps/web/src/lib`: API client helpers and validation.
@@ -73,4 +73,4 @@ Do not put secrets in `NEXT_PUBLIC_*` variables: those are browser-visible. `MAX
 
 Use `docker compose --env-file .env -f infra/compose.yaml logs api web db` to inspect failures. Check Docker is running and that host ports are free. `/health` can pass while `/ready` fails; the latter requires a real database connection. The live smoke script accepts `WEB_URL` and `API_URL` shell variables for alternate ports.
 
-Uploads that fail to parse return 422 with a user-safe message; scanned or image-only PDFs have no extractable text and are rejected. Section detection matches common English headings on their own line; anything before the first heading is grouped as "Header". All checks in the README pass in Docker. The native workflow needs Node.js 22 and Python 3.12+ installed locally.
+Uploads that fail to parse return 422 with a user-safe message; scanned or image-only PDFs have no extractable text and are rejected. Section detection matches common English headings on their own line; anything before the first heading is grouped as "Header". Library import treats blank lines, or a plain line after bullet points, as the start of a new entry; it reads date ranges like `Mar 2021 - Present`, `03/2021 – 2023`, or `2019 to 2020`, and skips entries and skills already in the library. Results are always unverified drafts for the user to correct. All checks in the README pass in Docker. The native workflow needs Node.js 22 and Python 3.12+ installed locally.

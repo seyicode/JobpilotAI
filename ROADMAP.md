@@ -7,7 +7,7 @@
 
 ## Milestone 1 — Profile and resume
 - [x] Resume upload and parsing (PDF/DOCX/TXT, local text extraction, section splitting)
-- [ ] Verified experience and skills library
+- [x] Verified experience and skills library (draft import from resumes, edit, verify)
 - [ ] Job preferences and filters
 
 ## Milestone 2 — Matching

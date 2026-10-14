@@ -2,7 +2,7 @@ import Link from "next/link";
 const steps: { title: string; detail: string; href?: string }[] = [
   { title: "Your experience", detail: "Upload a resume, then review and verify your skills and accomplishments in your library.", href: "/library" },
   { title: "Your preferences", detail: "Set the roles, locations, and salary you want, and choose which ones must match.", href: "/preferences" },
-  { title: "Your opportunities", detail: "Add job descriptions and explore explainable matches." },
+  { title: "Your opportunities", detail: "Paste job descriptions to see their requirements and an explainable match score.", href: "/jobs" },
   { title: "Your applications", detail: "Review tailored resumes, then apply manually." },
 ];
 export function Dashboard() {

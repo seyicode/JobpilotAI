@@ -107,3 +107,16 @@ def test_schema_dedupes_and_removes_preferred_duplicates():
     assert r.preferred_skills == ["Go"]
     assert (r.salary.min, r.salary.max, r.salary.currency) == (5, 10, "GBP")
     assert skill_key("K8s") == "kubernetes"
+
+
+@pytest.mark.parametrize(
+    ("text", "location"),
+    [
+        ("Location: Manchester, UK. Hybrid, full-time. £60,000 per year.", "Manchester, UK"),
+        ("Location: St. Louis, MO | Remote friendly", "St. Louis, MO"),
+        ("Based in: Berlin, Germany; salary on request", "Berlin, Germany"),
+        ("Remote (EU time zones) role", "EU time zones"),
+    ],
+)
+def test_location_stops_at_other_details(text, location):
+    assert extract_with_rules(text).location == location

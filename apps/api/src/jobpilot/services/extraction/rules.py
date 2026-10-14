@@ -200,9 +200,19 @@ def _work_arrangement(text: str):
     return None
 
 
+# "Location: Manchester, UK. Hybrid, full-time." -> stop before the arrangement/pay details.
+_LOCATION_END = re.compile(
+    r"\s+[|·]\s+|[.;,]\s+(?=(?:hybrid|remote|on[- ]?site|in[- ]office|full|part|contract|"
+    r"temporary|permanent|salary|pay|[£$€]|\d))",
+    re.IGNORECASE,
+)
+
+
 def _location(text: str) -> str | None:
     match = _LOCATION.search(text) or _ARRANGEMENT_LOCATION.search(text)
-    return match[1].strip(" .")[:200] if match else None
+    if not match:
+        return None
+    return _LOCATION_END.split(match[1], maxsplit=1)[0].strip(" .")[:200] or None
 
 
 def _years(text: str) -> int | None:

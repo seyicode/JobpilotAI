@@ -11,9 +11,9 @@
 - [x] Job preferences and filters (must-match hard filters with explanations)
 
 ## Milestone 2 — Matching
-- [ ] Paste job descriptions and add job URLs
-- [ ] Requirement extraction
-- [ ] Explainable scoring and hard filters
+- [x] Paste job descriptions and add job URLs (no fetching; deduplicated)
+- [x] Requirement extraction (local rules; optional OpenAI with spending controls)
+- [x] Explainable scoring and hard filters
 
 ## Milestone 3 — Resume generation
 - [ ] Tailored content grounded in verified experience

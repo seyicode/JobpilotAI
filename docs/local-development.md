@@ -8,12 +8,13 @@
 - `apps/api/src/jobpilot/api/routes`: HTTP endpoints.
 - `apps/api/src/jobpilot/core`: shared environment configuration.
 - `apps/api/src/jobpilot/db`: SQLAlchemy engine, sessions, and models.
-- `apps/api/src/jobpilot/services`: business logic: `resume_parser.py` (local PDF/DOCX/TXT text extraction and section splitting) `library_import.py` (heuristics that turn parsed sections into draft experience entries and skills), and `preferences.py` (job preference validation and explainable hard filters).
+- `apps/api/src/jobpilot/services`: business logic: `resume_parser.py` (local PDF/DOCX/TXT text extraction and section splitting) `library_import.py` (heuristics that turn parsed sections into draft experience entries and skills), `preferences.py` (job preference validation and explainable hard filters), `job_ingestion.py` (duplicate detection), `extraction/` (requirement schema, local rules, and the optional OpenAI extractor), `skills.py` (skill name normalisation), and `matching.py` (explainable scoring). See [jobs and matching](jobs-and-matching.md).
 - `apps/api/migrations`: Alembic migrations, applied by `alembic upgrade head` when the API container starts.
 - `apps/api/tests`: API and parser tests. Health tests mock the database; resume API tests use a real `<POSTGRES_DB>_test` database that is created and migrated automatically and skipped if PostgreSQL is unreachable. Test resumes are fictional and built in memory (`tests/samples.py`).
 - `apps/web/src/lib`: API client helpers and validation.
 - `infra/compose.yaml`: local PostgreSQL, API, and web orchestration.
 - `scripts/smoke.py`: live HTTP checks of the dashboard, API, and database readiness.
+- `scripts/check.sh`: every test, lint, type, build, migration, and smoke check against the running stack.
 
 To change the schema, edit `db/models.py` and add a migration in `apps/api/migrations/versions`, for example with `docker compose --env-file .env -f infra/compose.yaml exec api alembic revision --autogenerate -m "describe change"` (the migrations folder is mounted read-only, so write the file on the host or adjust the mount). Restart the API to apply it.
 
@@ -67,7 +68,7 @@ python3 scripts/smoke.py
 
 All variables are documented in `.env.example`. `DATABASE_URL` uses `localhost` for native development; Compose builds a URL using the internal `db` hostname and PostgreSQL credentials. URL-encode any special characters in credentials. `CORS_ORIGINS` must be a JSON array of browser origins. If you change the web port, update this array; if you change the API port, update `NEXT_PUBLIC_API_URL`. Update the native database URL when changing the database host port or credentials.
 
-Do not put secrets in `NEXT_PUBLIC_*` variables: those are browser-visible. `MAX_RESUME_BYTES` (optional, default 5 MB) limits uploads on the API; the web page also checks 5 MB before uploading. No AI key is needed yet. `.gitignore` and `.dockerignore` exclude local secrets, resumes, uploads, and generated output. Store private documents only in those excluded folders; ignore rules cannot detect arbitrary personal data in other files.
+Do not put secrets in `NEXT_PUBLIC_*` variables: those are browser-visible. The `api` service also loads `.env` directly, so optional settings such as `MAX_RESUME_BYTES`, `MATCH_WEIGHTS`, and the `OPENAI_*`/`AI_*` variables reach it (and only it); blank values count as unset. `MAX_RESUME_BYTES` (default 5 MB) limits uploads on the API; the web page also checks 5 MB before uploading. No AI key is needed; AI extraction is optional and documented in [jobs and matching](jobs-and-matching.md). `.gitignore` and `.dockerignore` exclude local secrets, resumes, uploads, and generated output. Store private documents only in those excluded folders; ignore rules cannot detect arbitrary personal data in other files.
 
 ## Troubleshooting and validation limits
 

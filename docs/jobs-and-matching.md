@@ -28,7 +28,7 @@ Skill names are compared through `services/skills.py`, which lowercases them and
 
 ### OpenAI (optional, paid)
 
-`services/extraction/openai_extractor.py` calls the Chat Completions REST endpoint directly with `httpx` and a strict JSON schema, then validates the response with the same Pydantic model. It is used only when both `OPENAI_API_KEY` and `OPENAI_MODEL` are set in `.env`.
+`services/extraction/openai_extractor.py` uses the shared client in `services/ai/openai_client.py` (also used by resume rewording), which calls the Chat Completions REST endpoint directly with `httpx` and a strict JSON schema; then validates the response with the same Pydantic model. It is used only when both `OPENAI_API_KEY` and `OPENAI_MODEL` are set in `.env`.
 
 | Concern | How it is handled |
 | --- | --- |

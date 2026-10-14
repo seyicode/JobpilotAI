@@ -16,9 +16,9 @@
 - [x] Explainable scoring and hard filters
 
 ## Milestone 3 — Resume generation
-- [ ] Tailored content grounded in verified experience
-- [ ] Human review/diff
-- [ ] DOCX/PDF export and per-job version history
+- [x] Tailored content grounded in verified experience (deterministic; optional fact-checked AI rewording)
+- [x] Human review/diff (side by side with sources; edit rules, warnings, approval)
+- [x] DOCX/PDF export and per-job version history
 
 ## Milestone 4 — Discovery and tracking
 - [ ] Supported job source adapters

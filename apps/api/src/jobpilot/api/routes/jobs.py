@@ -125,7 +125,7 @@ def list_jobs(session: SessionDep, settings: Annotated[Settings, Depends(get_set
     preferences, profile = load_preferences(session), load_profile(session)
     items = []
     for job in jobs:
-        result = _match(job, preferences, profile, settings)
+        result = match_for_job(job, preferences, profile, settings)
         items.append(JobListItem(
             **JobSummary.model_validate(job, from_attributes=True).model_dump(),
             match_score=result.score, match_coverage=result.coverage, eligible=result.eligible,
@@ -144,7 +144,7 @@ def get_match(
 ) -> MatchResult:
     """Deterministic match against your preferences and verified library, with reasons."""
     job = get_job_or_404(session, job_id)
-    return _match(job, load_preferences(session), load_profile(session), settings)
+    return match_for_job(job, load_preferences(session), load_profile(session), settings)
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -229,6 +229,6 @@ def load_profile(session: Session) -> VerifiedProfile:
     )
 
 
-def _match(job: Job, preferences, profile: VerifiedProfile, settings: Settings) -> MatchResult:
+def match_for_job(job: Job, preferences, profile: VerifiedProfile, settings: Settings) -> MatchResult:
     return match_job(stored_requirements(job), job.description, preferences, profile,
                      weights=settings.match_weights)

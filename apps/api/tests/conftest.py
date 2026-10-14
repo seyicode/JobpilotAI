@@ -49,7 +49,7 @@ def test_database_url() -> str:
 def session_factory(test_database_url: str) -> Iterator[sessionmaker[Session]]:
     engine = create_engine(test_database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE resumes, experiences, skills, job_preferences, jobs, ai_usage, ai_cache, profile"))
+        connection.execute(text("TRUNCATE resumes, experiences, skills, job_preferences, jobs, ai_usage, ai_cache, profile, tailored_resumes"))
     yield sessionmaker(engine, expire_on_commit=False)
     engine.dispose()
 

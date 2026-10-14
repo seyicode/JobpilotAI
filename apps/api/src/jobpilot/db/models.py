@@ -11,6 +11,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -161,3 +162,26 @@ class ProfileRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class TailoredResume(Base):
+    """One version of a resume tailored to a job. Approved versions are read-only."""
+
+    __tablename__ = "tailored_resumes"
+    __table_args__ = (UniqueConstraint("job_id", "version", name="uq_tailored_resumes_job_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | approved
+    generation_method: Mapped[str] = mapped_column(String(20))  # deterministic | ai
+    edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    based_on_version: Mapped[int | None] = mapped_column(Integer)
+    content: Mapped[dict] = mapped_column(JSONB)
+    warnings: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

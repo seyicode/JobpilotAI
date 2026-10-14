@@ -21,9 +21,9 @@
 - [x] DOCX/PDF export and per-job version history
 
 ## Milestone 4 — Discovery and tracking
-- [ ] Supported job source adapters
-- [ ] Scheduled searches and deduplication
-- [ ] Dashboard, CSV export, and application tracking
+- [x] Supported job source adapters (Greenhouse, Lever, Ashby public feeds)
+- [x] Scheduled searches and deduplication (worker, limits, health, idempotent runs)
+- [x] Dashboard, CSV export, and application tracking
 
 ## Later
 - [ ] Browser extension

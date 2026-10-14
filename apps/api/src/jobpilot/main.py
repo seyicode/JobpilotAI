@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from jobpilot.api.routes.health import router as health_router
+from jobpilot.api.routes.jobs import router as jobs_router
 from jobpilot.api.routes.library import router as library_router
 from jobpilot.api.routes.preferences import router as preferences_router
 from jobpilot.api.routes.resumes import router as resumes_router
@@ -20,6 +21,7 @@ def create_app() -> FastAPI:
     app.include_router(resumes_router)
     app.include_router(library_router)
     app.include_router(preferences_router)
+    app.include_router(jobs_router)
     return app
 
 

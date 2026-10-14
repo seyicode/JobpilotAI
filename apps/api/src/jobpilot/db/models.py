@@ -83,3 +83,24 @@ class PreferencesRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Job(Base):
+    """A job posting the user pasted in. The original description is stored unchanged."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str | None] = mapped_column(String(200))
+    company: Mapped[str | None] = mapped_column(String(200))
+    source_url: Mapped[str | None] = mapped_column(String(2000))
+    canonical_url: Mapped[str | None] = mapped_column(String(2000), unique=True)
+    description: Mapped[str] = mapped_column(Text)
+    description_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    requirements: Mapped[dict | None] = mapped_column(JSONB)
+    extraction_method: Mapped[str | None] = mapped_column(String(20))
+    extraction_note: Mapped[str | None] = mapped_column(String(200))
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )

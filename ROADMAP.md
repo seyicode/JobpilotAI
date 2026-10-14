@@ -3,10 +3,10 @@
 ## Milestone 0 — Developer setup
 - [ ] Install Codex and authenticate
 - [ ] Install Git, Docker Desktop/Engine, Node.js LTS, Python 3.12+
-- [ ] Create repository and run local development stack
+- [x] Create repository and run local development stack
 
 ## Milestone 1 — Profile and resume
-- [ ] Resume upload and parsing
+- [x] Resume upload and parsing (PDF/DOCX/TXT, local text extraction, section splitting)
 - [ ] Verified experience and skills library
 - [ ] Job preferences and filters
 

@@ -11,7 +11,7 @@ cp .env.example .env
 docker compose --env-file .env -f infra/compose.yaml up --build --wait
 ```
 
-Open http://localhost:3000 for the dashboard and http://localhost:8000/docs for API documentation.
+Open http://localhost:3000 for the dashboard, http://localhost:3000/resumes to upload a resume, and http://localhost:8000/docs for API documentation. The API applies database migrations automatically when it starts.
 
 ```sh
 curl --fail http://localhost:8000/health
@@ -27,7 +27,7 @@ With the stack running:
 
 ```sh
 docker compose --env-file .env -f infra/compose.yaml exec api pytest -q
-docker compose --env-file .env -f infra/compose.yaml exec api ruff check src tests
+docker compose --env-file .env -f infra/compose.yaml exec api ruff check src tests migrations
 docker compose --env-file .env -f infra/compose.yaml exec web npm test
 docker compose --env-file .env -f infra/compose.yaml exec web npm run typecheck
 docker compose --env-file .env -f infra/compose.yaml exec web npm run build
@@ -43,6 +43,6 @@ See [local development](docs/local-development.md) for native setup, configurati
 
 ## Scope and principles
 
-This scaffold includes a Next.js/TypeScript/Tailwind dashboard, modular FastAPI service, PostgreSQL, local containers, and smoke tests. No authentication, scraping, AI generation, automatic applications, or paid infrastructure is implemented.
+Implemented so far: a Next.js/TypeScript/Tailwind dashboard, a modular FastAPI service, PostgreSQL with Alembic migrations, local containers, smoke tests, and resume upload and parsing (PDF, DOCX, or TXT up to 5 MB; text is extracted locally without AI and split into sections; the original file is not stored). No authentication, scraping, AI generation, automatic applications, or paid infrastructure is implemented. Without authentication, anyone who can reach the API can read uploaded resumes, so keep it bound to localhost.
 
 Future matching must be explainable. Resume tailoring must use verified experience and never invent qualifications, employers, dates, or accomplishments. Keep future AI requests server-side and protect resumes and personal data.

@@ -19,6 +19,10 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
+    # AI settings (OPENAI_*, AI_*) come from .env and reach only this service, never the web app.
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jobpilot}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jobpilot}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}

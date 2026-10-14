@@ -13,6 +13,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+from jobpilot.api.routes.jobs import get_ai_extractor
 from jobpilot.core.config import get_settings
 from jobpilot.db.session import get_session, sqlalchemy_url
 from jobpilot.main import create_app
@@ -48,7 +49,7 @@ def test_database_url() -> str:
 def session_factory(test_database_url: str) -> Iterator[sessionmaker[Session]]:
     engine = create_engine(test_database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE resumes, experiences, skills, job_preferences, jobs"))
+        connection.execute(text("TRUNCATE resumes, experiences, skills, job_preferences, jobs, ai_usage, ai_cache"))
     yield sessionmaker(engine, expire_on_commit=False)
     engine.dispose()
 
@@ -61,5 +62,7 @@ def db_client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
 
     app = create_app()
     app.dependency_overrides[get_session] = override
+    # Never reach a real AI provider from tests; AI tests install a fake extractor.
+    app.dependency_overrides[get_ai_extractor] = lambda: None
     with TestClient(app) as client:
         yield client

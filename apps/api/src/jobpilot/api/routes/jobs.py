@@ -10,9 +10,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from jobpilot.core.config import Settings, get_settings
 from jobpilot.db.models import Job, Skill
 from jobpilot.db.session import get_session
 from jobpilot.services.extraction import ExtractionOutcome, extract_requirements
+from jobpilot.services.extraction.openai_extractor import OpenAIExtractor
 from jobpilot.services.extraction.schema import JobRequirements
 from jobpilot.services.job_ingestion import InvalidJobUrl, canonical_url, description_fingerprint
 
@@ -20,6 +22,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def get_ai_extractor(settings: Annotated[Settings, Depends(get_settings)]) -> OpenAIExtractor | None:
+    return OpenAIExtractor(settings) if settings.ai_configured else None
+
+
+AIDep = Annotated[OpenAIExtractor | None, Depends(get_ai_extractor)]
 OptionalName = Annotated[str | None, Field(default=None, max_length=200)]
 
 
@@ -64,7 +73,9 @@ class JobCreateResult(BaseModel):
 
 
 @router.post("", response_model=JobCreateResult, status_code=status.HTTP_201_CREATED)
-def create_job(payload: JobCreate, session: SessionDep, response: Response) -> JobCreateResult:
+def create_job(
+    payload: JobCreate, session: SessionDep, ai: AIDep, response: Response
+) -> JobCreateResult:
     """Store a pasted job. A duplicate returns the existing job with 200 and duplicate=true."""
     try:
         url = canonical_url(payload.source_url) if payload.source_url else None
@@ -78,7 +89,7 @@ def create_job(payload: JobCreate, session: SessionDep, response: Response) -> J
             title=payload.title, company=payload.company, source_url=payload.source_url,
             canonical_url=url, description=payload.description, description_hash=fingerprint,
         )
-        _apply_extraction(job, _extract(session, job))
+        _apply_extraction(job, _extract(session, job, ai))
         session.add(job)
         try:
             session.commit()
@@ -117,10 +128,10 @@ def delete_job(job_id: uuid.UUID, session: SessionDep) -> Response:
 
 
 @router.post("/{job_id}/extract", response_model=JobDetail)
-def reextract_job(job_id: uuid.UUID, session: SessionDep) -> Job:
+def reextract_job(job_id: uuid.UUID, session: SessionDep, ai: AIDep) -> Job:
     """Run extraction again, replacing any earlier or manually corrected requirements."""
     job = get_job_or_404(session, job_id)
-    _apply_extraction(job, _extract(session, job))
+    _apply_extraction(job, _extract(session, job, ai))
     session.commit()
     return job
 
@@ -148,10 +159,11 @@ def _find_duplicate(session: Session, fingerprint: str, url: str | None) -> Job 
     return session.scalars(select(Job).where(condition).limit(1)).first()
 
 
-def _extract(session: Session, job: Job) -> ExtractionOutcome:
+def _extract(session: Session, job: Job, ai: OpenAIExtractor | None) -> ExtractionOutcome:
     library_skills = list(session.scalars(select(Skill.name)))
     return extract_requirements(
-        job.description, title=job.title, company=job.company, extra_skills=library_skills
+        session, job.description, title=job.title, company=job.company,
+        extra_skills=library_skills, ai=ai,
     )
 
 

@@ -41,6 +41,24 @@ services:
       interval: 10s
       timeout: 6s
       retries: 5
+  worker:
+    # Scheduled job discovery. Idles unless DISCOVERY_ENABLED=true in .env.
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    command: ["python", "-m", "jobpilot.worker"]
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jobpilot}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jobpilot}
+      PYTHONPATH: /app/src
+    volumes:
+      - ../apps/api/src:/app/src:ro
+    depends_on:
+      api:
+        condition: service_healthy  # The API applies database migrations on start
+    restart: unless-stopped
   web:
     build:
       context: ..

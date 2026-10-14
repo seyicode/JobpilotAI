@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from jobpilot.api.routes.preferences import load_preferences
 from jobpilot.core.config import Settings, get_settings
 from jobpilot.db.models import JobSource, SourceRun
 from jobpilot.db.session import get_session
-from jobpilot.services.discovery import run_source
+from jobpilot.services.discovery import requests_in_last_hour, run_source
 from jobpilot.services.sources.base import InvalidBoard, validate_board
 from jobpilot.services.sources.fetcher import FeedFetcher
 from jobpilot.services.sources.providers import ADAPTERS
@@ -35,6 +35,15 @@ def get_feed_fetcher(settings: SettingsDep) -> FeedFetcher:
 
 
 FetcherDep = Annotated[FeedFetcher, Depends(get_feed_fetcher)]
+
+
+class DiscoveryStatus(BaseModel):
+    scheduled: bool
+    uses_ai: bool
+    requests_last_hour: int
+    hourly_request_limit: int
+    next_check_at: datetime | None
+    sources_failing: int
 
 
 class ProviderOut(BaseModel):
@@ -103,6 +112,21 @@ BOARD_HINTS = {
     "lever": "The name in jobs.lever.co/<board>",
     "ashby": "The name in jobs.ashbyhq.com/<board>",
 }
+
+
+@router.get("/status", response_model=DiscoveryStatus)
+def discovery_status(session: SessionDep, settings: SettingsDep) -> DiscoveryStatus:
+    """Whether scheduled discovery is on, and how much of the request budget is used."""
+    next_check = session.scalar(select(func.min(JobSource.next_run_at)).where(JobSource.enabled.is_(True)))
+    failing = session.scalar(select(func.count()).select_from(JobSource).where(JobSource.status == "failing"))
+    return DiscoveryStatus(
+        scheduled=settings.discovery_enabled,
+        uses_ai=settings.discovery_use_ai and settings.ai_configured,
+        requests_last_hour=requests_in_last_hour(session, datetime.now(UTC)),
+        hourly_request_limit=settings.discovery_max_requests_per_hour,
+        next_check_at=next_check if settings.discovery_enabled else None,
+        sources_failing=failing,
+    )
 
 
 @router.get("/providers", response_model=list[ProviderOut])

@@ -17,6 +17,7 @@ export type JobListItem = {
 };
 export type JobDetail = Omit<JobListItem, "match_score" | "match_coverage" | "eligible"> & {
   description: string; requirements: JobRequirements | null; extraction_note: string | null; extracted_at: string | null;
+  application_status: string; seen_at: string | null;
 };
 export type FilterResult = { filter: string; status: "pass" | "fail" | "unknown"; reason: string };
 export type ScoreComponent = { key: string; label: string; weight: number; status: "scored" | "unknown"; value: number | null; points: number | null; detail: string };

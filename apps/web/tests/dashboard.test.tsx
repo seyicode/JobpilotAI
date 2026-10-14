@@ -7,6 +7,6 @@ describe("dashboard smoke test", () => {
     const html = renderToStaticMarkup(React.createElement(Dashboard));
     expect(html).toContain("Your dashboard");
     expect(html).toContain("apply manually");
-    expect(html.match(/<article/g)).toHaveLength(4);
+    expect(html.match(/<article/g)).toHaveLength(6);
   });
 });

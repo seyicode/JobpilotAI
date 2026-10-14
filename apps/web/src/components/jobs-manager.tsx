@@ -8,6 +8,7 @@ import {
   createJob, deleteJob, emptyRequirements, EXTRACTION_LABELS, getJob, getMatch, type JobDetail, jobLabel, type JobListItem,
   listJobs, type MatchResult, type NewJob, reextractJob, saveRequirements, validateNewJob,
 } from "@/lib/jobs";
+import { updateApplication } from "@/lib/tracker";
 
 const emptyJob = (): NewJob => ({ description: "", source_url: "", title: "", company: "" });
 
@@ -30,9 +31,13 @@ export function JobsManager() {
   }
   const refresh = async () => { setJobs(await listJobs()); setLoaded(true); };
   const show = async (job: JobDetail) => {
+    if (job.application_status === "discovered" && !job.seen_at) void updateApplication(job.id, { seen: true }).catch(() => undefined);
     setSelected({ job, match: await getMatch(job.id) }); setEditing(false); setConfirmingDelete(false); setAdding(false);
   };
-  useEffect(() => { void run(refresh); }, []);
+  useEffect(() => {
+    const linked = new URLSearchParams(window.location.search).get("job");  // From the tracker
+    void run(async () => { await refresh(); if (linked) await show(await getJob(linked)); });
+  }, []);
 
   function submit() {
     const problem = validateNewJob(draft);

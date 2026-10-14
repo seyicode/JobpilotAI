@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
     ai_monthly_budget_usd: float | None = Field(default=None, ge=0)
     ai_input_cost_per_million_tokens_usd: float | None = Field(default=None, ge=0)
     ai_output_cost_per_million_tokens_usd: float | None = Field(default=None, ge=0)
+
+    # Resume export page size: A4 or LETTER.
+    resume_page_size: Literal["A4", "LETTER"] = "A4"
 
     # Matching: override factor weights, e.g. MATCH_WEIGHTS={"required_skills": 50}.
     match_weights: dict[str, float] = Field(default_factory=dict)

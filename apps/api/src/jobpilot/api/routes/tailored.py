@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from jobpilot.core.config import Settings, get_settings
 from jobpilot.db.models import Experience, Job, Skill, TailoredResume
 from jobpilot.db.session import get_session
 from jobpilot.services.resumes.assembly import assemble_resume
+from jobpilot.services.resumes.export import export_filename, render_docx, render_pdf
 from jobpilot.services.resumes.review import EditRejected, apply_edit, library_conflicts
 from jobpilot.services.resumes.schema import ResumeContent
 
@@ -148,6 +149,40 @@ def copy_version(resume_id: uuid.UUID, session: SessionDep) -> VersionDetail:
                           note=f"Copied from version {source.version}.", edited=source.edited,
                           warnings=source.warnings)
     return _detail(record)
+
+
+EXPORT_TYPES = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pdf": "application/pdf",
+}
+
+
+@router.get("/tailored-resumes/{resume_id}/export")
+def export_version(
+    resume_id: uuid.UUID,
+    file_format: Annotated[Literal["docx", "pdf"], Query(alias="format")],
+    session: SessionDep,
+    settings: SettingsDep,
+) -> Response:
+    """Download an approved version. Generated in memory; never stored or cached."""
+    record = _get_or_404(session, resume_id)
+    if record.status != "approved":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Approve this version before exporting it.")
+    content = ResumeContent.model_validate(record.content)
+    if file_format == "docx":
+        data = render_docx(content)
+    else:
+        data = render_pdf(content, settings.resume_page_size)
+    job = session.get(Job, record.job_id)
+    filename = export_filename(content, job.title if job else None, job.company if job else None,
+                               record.version, file_format)
+    logger.info("tailored resume exported id=%s version=%d format=%s bytes=%d",
+                record.id, record.version, file_format, len(data))
+    return Response(content=data, media_type=EXPORT_TYPES[file_format], headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store, private",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.delete("/tailored-resumes/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)

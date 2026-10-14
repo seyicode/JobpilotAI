@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MatchView, ScoreBadge } from "@/components/match-view";
 import { RequirementsForm } from "@/components/requirements-form";
@@ -104,6 +105,7 @@ export function JobsManager() {
               {job.source_url && <a href={job.source_url} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-sm text-teal-700 underline">{job.source_url}</a>}
             </div>
             <span className="flex flex-wrap gap-2">
+              <Link href={`/jobs/${job.id}/resume`} className="rounded-lg bg-teal-700 px-3 py-1.5 text-sm font-medium text-white">Tailor resume</Link>
               {confirmingDelete
                 ? <><button onClick={() => remove(job.id)} disabled={busy} className="rounded-lg bg-red-700 px-3 py-1.5 text-sm font-medium text-white">Confirm delete</button>
                     <button onClick={() => setConfirmingDelete(false)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">Cancel</button></>

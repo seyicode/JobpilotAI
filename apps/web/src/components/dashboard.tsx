@@ -3,7 +3,7 @@ const steps: { title: string; detail: string; href?: string }[] = [
   { title: "Your experience", detail: "Upload a resume, then review and verify your skills and accomplishments in your library.", href: "/library" },
   { title: "Your preferences", detail: "Set the roles, locations, and salary you want, and choose which ones must match.", href: "/preferences" },
   { title: "Your opportunities", detail: "Paste job descriptions to see their requirements and an explainable match score.", href: "/jobs" },
-  { title: "Your applications", detail: "Review tailored resumes, then apply manually." },
+  { title: "Your applications", detail: "Open a job and choose Tailor resume to review, approve and download a resume. You apply manually.", href: "/jobs" },
 ];
 export function Dashboard() {
   return <main className="mx-auto max-w-5xl px-6 py-16">

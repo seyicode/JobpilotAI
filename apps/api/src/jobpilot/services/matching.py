@@ -203,7 +203,7 @@ def _skill_evidence(skill: str, kind: str, profile: VerifiedProfile) -> list[Evi
 
 def _mention(skill: str, experience: dict) -> str | None:
     """The highlight mentioning the skill, "" if only the title does, or None."""
-    patterns = _skill_patterns(skill)
+    patterns = skill_patterns(skill)
     for highlight in experience.get("highlights") or []:
         if any(p.search(highlight) for p in patterns):
             return highlight if len(highlight) <= 200 else highlight[:197] + "..."
@@ -212,7 +212,7 @@ def _mention(skill: str, experience: dict) -> str | None:
     return None
 
 
-def _skill_patterns(skill: str) -> list[re.Pattern]:
+def skill_patterns(skill: str) -> list[re.Pattern]:
     key = skill_key(skill)
     spellings = {skill, key} | {alias for alias, target in ALIASES.items() if target == key}
     return [re.compile(rf"(?<![\w+#.]){re.escape(s)}(?![\w+#])", re.IGNORECASE) for s in spellings]

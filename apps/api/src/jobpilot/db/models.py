@@ -68,3 +68,18 @@ class Skill(Base):
 
 
 Index("uq_skills_name_lower", func.lower(Skill.name), unique=True)
+
+
+class PreferencesRecord(Base):
+    """The user's job preferences, validated by services.preferences.JobPreferences.
+
+    Single-user for now: one row with id 1.
+    """
+
+    __tablename__ = "job_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

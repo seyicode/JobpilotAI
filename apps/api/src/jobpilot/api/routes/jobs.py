@@ -1,17 +1,19 @@
 import logging
 import re
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from jobpilot.db.models import Job
+from jobpilot.db.models import Job, Skill
 from jobpilot.db.session import get_session
+from jobpilot.services.extraction import ExtractionOutcome, extract_requirements
+from jobpilot.services.extraction.schema import JobRequirements
 from jobpilot.services.job_ingestion import InvalidJobUrl, canonical_url, description_fingerprint
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,7 @@ def create_job(payload: JobCreate, session: SessionDep, response: Response) -> J
             title=payload.title, company=payload.company, source_url=payload.source_url,
             canonical_url=url, description=payload.description, description_hash=fingerprint,
         )
+        _apply_extraction(job, _extract(session, job))
         session.add(job)
         try:
             session.commit()
@@ -85,7 +88,10 @@ def create_job(payload: JobCreate, session: SessionDep, response: Response) -> J
             if existing is None:
                 raise
         else:
-            logger.info("job created id=%s chars=%d has_url=%s", job.id, len(job.description), bool(url))
+            logger.info(
+                "job created id=%s chars=%d has_url=%s extraction=%s",
+                job.id, len(job.description), bool(url), job.extraction_method,
+            )
             return JobCreateResult(job=JobDetail.model_validate(job, from_attributes=True), duplicate=False)
 
     response.status_code = status.HTTP_200_OK
@@ -110,6 +116,24 @@ def delete_job(job_id: uuid.UUID, session: SessionDep) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/{job_id}/extract", response_model=JobDetail)
+def reextract_job(job_id: uuid.UUID, session: SessionDep) -> Job:
+    """Run extraction again, replacing any earlier or manually corrected requirements."""
+    job = get_job_or_404(session, job_id)
+    _apply_extraction(job, _extract(session, job))
+    session.commit()
+    return job
+
+
+@router.put("/{job_id}/requirements", response_model=JobDetail)
+def correct_requirements(job_id: uuid.UUID, payload: JobRequirements, session: SessionDep) -> Job:
+    """Save the user's corrections to the extracted requirements."""
+    job = get_job_or_404(session, job_id)
+    _apply_extraction(job, ExtractionOutcome(payload, "manual", "Corrected by you."))
+    session.commit()
+    return job
+
+
 def get_job_or_404(session: Session, job_id: uuid.UUID) -> Job:
     job = session.get(Job, job_id)
     if job is None:
@@ -122,3 +146,28 @@ def _find_duplicate(session: Session, fingerprint: str, url: str | None) -> Job 
     if url:
         condition = or_(condition, Job.canonical_url == url)
     return session.scalars(select(Job).where(condition).limit(1)).first()
+
+
+def _extract(session: Session, job: Job) -> ExtractionOutcome:
+    library_skills = list(session.scalars(select(Skill.name)))
+    return extract_requirements(
+        job.description, title=job.title, company=job.company, extra_skills=library_skills
+    )
+
+
+def _apply_extraction(job: Job, outcome: ExtractionOutcome) -> None:
+    requirements = outcome.requirements
+    job.requirements = requirements.model_dump()
+    job.extraction_method = outcome.method
+    job.extraction_note = outcome.note
+    job.extracted_at = datetime.now(UTC)
+    job.title = requirements.title or job.title
+    job.company = requirements.company or job.company
+
+
+def stored_requirements(job: Job) -> JobRequirements:
+    """Requirements as saved, or all-unknown if extraction never ran or the data is unreadable."""
+    try:
+        return JobRequirements.model_validate(job.requirements or {})
+    except ValidationError:
+        return JobRequirements()

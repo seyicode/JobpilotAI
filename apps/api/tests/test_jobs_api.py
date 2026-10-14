@@ -46,7 +46,8 @@ def test_create_preserves_original_description_and_url(db_client):
     job = body["job"]
     assert job["description"] == DESCRIPTION
     assert job["source_url"] == "https://www.example.com/jobs/42?utm_source=feed"
-    assert (job["title"], job["company"]) == ("Backend Engineer", None)
+    # A blank company hint is ignored, so the extracted company is used.
+    assert (job["title"], job["company"]) == ("Backend Engineer", "Example Corp")
     assert db_client.get(f"/jobs/{job['id']}").json()["description"] == DESCRIPTION
 
 
@@ -81,3 +82,40 @@ def test_list_hides_description_and_delete(db_client):
     assert db_client.delete(f"/jobs/{job['id']}").status_code == 204
     assert db_client.get(f"/jobs/{job['id']}").status_code == 404
     assert db_client.delete(f"/jobs/{uuid.uuid4()}").status_code == 404
+
+
+def test_create_runs_rule_extraction(db_client):
+    job = create(db_client).json()["job"]
+    assert job["extraction_method"] == "rules"
+    assert job["extracted_at"] is not None
+    requirements = job["requirements"]
+    assert requirements["title"] == "Senior Backend Engineer"
+    assert requirements["seniority"] == "senior"
+    assert requirements["work_arrangement"] == "remote"
+    assert requirements["location"] == "UK"
+    assert requirements["years_experience_min"] == 5
+    assert set(requirements["required_skills"]) == {"Python", "PostgreSQL"}
+    assert requirements["salary"] == {"min": None, "max": None, "currency": None, "period": None}
+    assert job["title"] == "Senior Backend Engineer" and job["company"] == "Example Corp"
+
+
+def test_user_corrections_are_saved_as_manual(db_client):
+    job = create(db_client).json()["job"]
+    corrected = job["requirements"] | {"seniority": "lead", "required_skills": ["Python", "Go"]}
+    response = db_client.put(f"/jobs/{job['id']}/requirements", json=corrected)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["extraction_method"] == "manual"
+    assert body["requirements"]["seniority"] == "lead"
+    assert body["requirements"]["required_skills"] == ["Python", "Go"]
+    assert db_client.put(f"/jobs/{job['id']}/requirements", json={"seniority": "wizard"}).status_code == 422
+
+
+def test_reextract_replaces_corrections(db_client):
+    job = create(db_client, title="Platform Engineer").json()["job"]
+    assert job["requirements"]["title"] == "Platform Engineer"
+    db_client.put(f"/jobs/{job['id']}/requirements", json={"title": "Platform Engineer", "seniority": "lead"})
+    again = db_client.post(f"/jobs/{job['id']}/extract").json()
+    assert again["extraction_method"] == "rules"
+    assert again["requirements"]["seniority"] == "senior"  # the manual "lead" is replaced
+    assert again["title"] == "Platform Engineer"

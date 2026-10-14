@@ -113,6 +113,11 @@ class Job(Base):
     extraction_method: Mapped[str | None] = mapped_column(String(20))
     extraction_note: Mapped[str | None] = mapped_column(String(200))
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Application tracking, updated by the user (see services.applications).
+    application_status: Mapped[str] = mapped_column(String(20), default="shortlisted", index=True)
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
@@ -185,3 +190,18 @@ class TailoredResume(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class JobStatusEvent(Base):
+    """One application status change, for the job's history."""
+
+    __tablename__ = "job_status_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    from_status: Mapped[str | None] = mapped_column(String(20))
+    to_status: Mapped[str] = mapped_column(String(20))
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp()
+    )

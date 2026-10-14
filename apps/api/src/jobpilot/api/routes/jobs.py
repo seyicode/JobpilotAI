@@ -5,28 +5,37 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import or_, select
-from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from jobpilot.api.routes.preferences import load_preferences
 from jobpilot.core.config import Settings, get_settings
-from jobpilot.db.models import Experience, Job, Skill
+from jobpilot.db.models import Job, JobStatusEvent
 from jobpilot.db.session import get_session
-from jobpilot.services.extraction import ExtractionOutcome, extract_requirements
+from jobpilot.services.applications import ApplicationStatus, set_status
+from jobpilot.services.extraction import ExtractionOutcome
 from jobpilot.services.extraction.openai_extractor import OpenAIExtractor
 from jobpilot.services.extraction.schema import JobRequirements
-from jobpilot.services.job_ingestion import InvalidJobUrl, canonical_url, description_fingerprint
-from jobpilot.services.matching import MatchResult, VerifiedProfile, match_job
+from jobpilot.services.job_ingestion import InvalidJobUrl
+from jobpilot.services.jobs import (
+    NewJob,
+    apply_extraction,
+    extract_for_job,
+    ingest_job,
+    load_profile,
+    match_for_job,
+)
+from jobpilot.services.matching import MatchResult
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-def get_ai_extractor(settings: Annotated[Settings, Depends(get_settings)]) -> OpenAIExtractor | None:
+def get_ai_extractor(settings: SettingsDep) -> OpenAIExtractor | None:
     return OpenAIExtractor(settings) if settings.ai_configured else None
 
 
@@ -59,6 +68,9 @@ class JobSummary(BaseModel):
     company: str | None
     source_url: str | None
     extraction_method: str | None
+    application_status: ApplicationStatus
+    status_changed_at: datetime | None
+    seen_at: datetime | None
     created_at: datetime
 
 
@@ -73,6 +85,7 @@ class JobDetail(JobSummary):
     requirements: dict | None
     extraction_note: str | None
     extracted_at: datetime | None
+    notes: str | None
 
 
 class JobCreateResult(BaseModel):
@@ -80,52 +93,46 @@ class JobCreateResult(BaseModel):
     duplicate: bool
 
 
+class ApplicationUpdate(BaseModel):
+    """Manual application tracking. Omitted fields are unchanged."""
+
+    status: ApplicationStatus | None = None
+    notes: Annotated[str | None, Field(default=None, max_length=5000)]
+    seen: bool | None = None
+    status_note: Annotated[str | None, Field(default=None, max_length=500)]
+
+
+class StatusEventOut(BaseModel):
+    from_status: str | None
+    to_status: str
+    note: str | None
+    created_at: datetime
+
+
 @router.post("", response_model=JobCreateResult, status_code=status.HTTP_201_CREATED)
-def create_job(
-    payload: JobCreate, session: SessionDep, ai: AIDep, response: Response
-) -> JobCreateResult:
+def create_job(payload: JobCreate, session: SessionDep, ai: AIDep, response: Response) -> JobCreateResult:
     """Store a pasted job. A duplicate returns the existing job with 200 and duplicate=true."""
+    new = NewJob(description=payload.description, url=payload.source_url,
+                 title=payload.title, company=payload.company)
     try:
-        url = canonical_url(payload.source_url) if payload.source_url else None
+        job, duplicate = ingest_job(session, new, ai)
     except InvalidJobUrl as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from None
-    fingerprint = description_fingerprint(payload.description)
-
-    existing = _find_duplicate(session, fingerprint, url)
-    if existing is None:
-        job = Job(
-            title=payload.title, company=payload.company, source_url=payload.source_url,
-            canonical_url=url, description=payload.description, description_hash=fingerprint,
-        )
-        _apply_extraction(job, _extract(session, job, ai))
-        session.add(job)
-        try:
-            session.commit()
-        except IntegrityError:  # Another request stored the same job first.
-            session.rollback()
-            existing = _find_duplicate(session, fingerprint, url)
-            if existing is None:
-                raise
-        else:
-            logger.info(
-                "job created id=%s chars=%d has_url=%s extraction=%s",
-                job.id, len(job.description), bool(url), job.extraction_method,
-            )
-            return JobCreateResult(job=JobDetail.model_validate(job, from_attributes=True), duplicate=False)
-
-    response.status_code = status.HTTP_200_OK
-    logger.info("job duplicate id=%s", existing.id)
-    return JobCreateResult(job=JobDetail.model_validate(existing, from_attributes=True), duplicate=True)
+    session.commit()
+    if duplicate:
+        response.status_code = status.HTTP_200_OK
+        logger.info("job duplicate id=%s", job.id)
+    return JobCreateResult(job=JobDetail.model_validate(job, from_attributes=True), duplicate=duplicate)
 
 
 @router.get("", response_model=list[JobListItem])
-def list_jobs(session: SessionDep, settings: Annotated[Settings, Depends(get_settings)]) -> list[JobListItem]:
+def list_jobs(session: SessionDep, settings: SettingsDep) -> list[JobListItem]:
     """Newest first, each with its current match score (recomputed; nothing is cached)."""
     jobs = session.scalars(select(Job).order_by(Job.created_at.desc()))
     preferences, profile = load_preferences(session), load_profile(session)
     items = []
     for job in jobs:
-        result = match_for_job(job, preferences, profile, settings)
+        result = match_for_job(job, preferences, profile, settings.match_weights)
         items.append(JobListItem(
             **JobSummary.model_validate(job, from_attributes=True).model_dump(),
             match_score=result.score, match_coverage=result.coverage, eligible=result.eligible,
@@ -139,12 +146,33 @@ def get_job(job_id: uuid.UUID, session: SessionDep) -> Job:
 
 
 @router.get("/{job_id}/match", response_model=MatchResult)
-def get_match(
-    job_id: uuid.UUID, session: SessionDep, settings: Annotated[Settings, Depends(get_settings)]
-) -> MatchResult:
+def get_match(job_id: uuid.UUID, session: SessionDep, settings: SettingsDep) -> MatchResult:
     """Deterministic match against your preferences and verified library, with reasons."""
     job = get_job_or_404(session, job_id)
-    return match_for_job(job, load_preferences(session), load_profile(session), settings)
+    return match_for_job(job, load_preferences(session), load_profile(session), settings.match_weights)
+
+
+@router.patch("/{job_id}/application", response_model=JobDetail)
+def update_application(job_id: uuid.UUID, payload: ApplicationUpdate, session: SessionDep) -> Job:
+    """Update status, private notes, or mark as seen. Status changes are recorded in the history."""
+    job = get_job_or_404(session, job_id)
+    changes = payload.model_dump(exclude_unset=True)
+    if changes.get("status"):
+        set_status(session, job, changes["status"], note=payload.status_note)
+    if "notes" in changes:
+        job.notes = (payload.notes or "").strip() or None
+    if payload.seen is not None:
+        job.seen_at = datetime.now(UTC) if payload.seen else None
+    session.commit()
+    logger.info("application updated job=%s status=%s", job.id, job.application_status)
+    return job
+
+
+@router.get("/{job_id}/application/history", response_model=list[StatusEventOut])
+def application_history(job_id: uuid.UUID, session: SessionDep) -> list[JobStatusEvent]:
+    get_job_or_404(session, job_id)
+    return list(session.scalars(select(JobStatusEvent).where(JobStatusEvent.job_id == job_id)
+                                .order_by(JobStatusEvent.created_at)))
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -158,7 +186,7 @@ def delete_job(job_id: uuid.UUID, session: SessionDep) -> Response:
 def reextract_job(job_id: uuid.UUID, session: SessionDep, ai: AIDep) -> Job:
     """Run extraction again, replacing any earlier or manually corrected requirements."""
     job = get_job_or_404(session, job_id)
-    _apply_extraction(job, _extract(session, job, ai))
+    apply_extraction(job, extract_for_job(session, job, ai))
     session.commit()
     return job
 
@@ -167,7 +195,7 @@ def reextract_job(job_id: uuid.UUID, session: SessionDep, ai: AIDep) -> Job:
 def correct_requirements(job_id: uuid.UUID, payload: JobRequirements, session: SessionDep) -> Job:
     """Save the user's corrections to the extracted requirements."""
     job = get_job_or_404(session, job_id)
-    _apply_extraction(job, ExtractionOutcome(payload, "manual", "Corrected by you."))
+    apply_extraction(job, ExtractionOutcome(payload, "manual", "Corrected by you."))
     session.commit()
     return job
 
@@ -177,58 +205,3 @@ def get_job_or_404(session: Session, job_id: uuid.UUID) -> Job:
     if job is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found.")
     return job
-
-
-def _find_duplicate(session: Session, fingerprint: str, url: str | None) -> Job | None:
-    condition = Job.description_hash == fingerprint
-    if url:
-        condition = or_(condition, Job.canonical_url == url)
-    return session.scalars(select(Job).where(condition).limit(1)).first()
-
-
-def _extract(session: Session, job: Job, ai: OpenAIExtractor | None) -> ExtractionOutcome:
-    library_skills = list(session.scalars(select(Skill.name)))
-    return extract_requirements(
-        session, job.description, title=job.title, company=job.company,
-        extra_skills=library_skills, ai=ai,
-    )
-
-
-def _apply_extraction(job: Job, outcome: ExtractionOutcome) -> None:
-    requirements = outcome.requirements
-    job.requirements = requirements.model_dump()
-    job.extraction_method = outcome.method
-    job.extraction_note = outcome.note
-    job.extracted_at = datetime.now(UTC)
-    job.title = requirements.title or job.title
-    job.company = requirements.company or job.company
-
-
-def stored_requirements(job: Job) -> JobRequirements:
-    """Requirements as saved, or all-unknown if extraction never ran or the data is unreadable."""
-    try:
-        return JobRequirements.model_validate(job.requirements or {})
-    except ValidationError:
-        return JobRequirements()
-
-
-def load_profile(session: Session) -> VerifiedProfile:
-    skills = list(session.scalars(select(Skill)))
-    experiences = list(session.scalars(select(Experience)))
-
-    def as_dict(e: Experience) -> dict:
-        return {"kind": e.kind, "title": e.title, "organization": e.organization,
-                "start_date": e.start_date, "end_date": e.end_date, "is_current": e.is_current,
-                "highlights": e.highlights}
-
-    return VerifiedProfile(
-        verified_skills=[s.name for s in skills if s.verified],
-        verified_experiences=[as_dict(e) for e in experiences if e.verified],
-        draft_skills=[s.name for s in skills if not s.verified],
-        draft_experiences=[as_dict(e) for e in experiences if not e.verified],
-    )
-
-
-def match_for_job(job: Job, preferences, profile: VerifiedProfile, settings: Settings) -> MatchResult:
-    return match_job(stored_requirements(job), job.description, preferences, profile,
-                     weights=settings.match_weights)

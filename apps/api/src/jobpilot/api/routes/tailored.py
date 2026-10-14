@@ -13,18 +13,14 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from jobpilot.api.routes.jobs import (
-    get_job_or_404,
-    load_profile,
-    match_for_job,
-    stored_requirements,
-)
+from jobpilot.api.routes.jobs import get_job_or_404
 from jobpilot.api.routes.preferences import load_preferences
 from jobpilot.api.routes.profile import load_profile_details
 from jobpilot.core.config import Settings, get_settings
 from jobpilot.db.models import Experience, Job, Skill, TailoredResume
 from jobpilot.db.session import get_session
 from jobpilot.services.ai.openai_client import AIUnavailable
+from jobpilot.services.jobs import load_profile, match_for_job, stored_requirements
 from jobpilot.services.resumes.ai_rewriter import AIRewriter
 from jobpilot.services.resumes.assembly import assemble_resume
 from jobpilot.services.resumes.export import export_filename, render_docx, render_pdf
@@ -247,7 +243,7 @@ def _verified_library(session: Session) -> tuple[dict[uuid.UUID, dict], list[str
 
 
 def _assemble(session: Session, job: Job, settings: Settings) -> ResumeContent:
-    match = match_for_job(job, load_preferences(session), load_profile(session), settings)
+    match = match_for_job(job, load_preferences(session), load_profile(session), settings.match_weights)
     return assemble_resume(stored_requirements(job), match, load_profile_details(session),
                            verified_experiences(session), verified_skill_names(session))
 

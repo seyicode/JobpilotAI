@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     discovery_timeout_seconds: float = Field(default=15, gt=0, le=60)
     discovery_max_retries: int = Field(default=2, ge=0, le=5)
     discovery_retry_base_delay_seconds: float = Field(default=1.0, ge=0, le=30)
-    discovery_max_response_bytes: int = Field(default=10_000_000, ge=100_000, le=50_000_000)
+    # Large employers' feeds include every full description (6-10+ MB seen in practice).
+    discovery_max_response_bytes: int = Field(default=30_000_000, ge=100_000, le=50_000_000)
     discovery_max_postings_per_source: int = Field(default=500, ge=1, le=5_000)
     discovery_max_requests_per_hour: int = Field(default=60, ge=1, le=1_000)
     discovery_default_interval_minutes: int = Field(default=360, ge=60)

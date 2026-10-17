@@ -29,6 +29,8 @@ With the stack running, `scripts/check.sh` runs everything below plus a migratio
 ./scripts/check.sh
 ```
 
+GitHub Actions runs the same script on every push to `main` and every pull request (`.github/workflows/checks.yml`), using `.env.example` with AI disabled.
+
 Or individually:
 
 ```sh

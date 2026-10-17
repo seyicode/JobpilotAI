@@ -1,0 +1,40 @@
+# Runs ./scripts/check.sh against the Docker Compose stack, the same checks as local development.
+# Uses .env.example only: no secrets, AI disabled, and tests block all network access.
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use example settings
+        run: cp .env.example .env
+
+      - name: Start the stack
+        run: docker compose --env-file .env -f infra/compose.yaml up -d --build --wait --wait-timeout 300
+
+      - name: Run all checks
+        run: ./scripts/check.sh
+
+      - name: Show service logs
+        if: failure()
+        run: docker compose --env-file .env -f infra/compose.yaml logs --no-color --tail 200
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose --env-file .env -f infra/compose.yaml down -v

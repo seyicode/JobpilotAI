@@ -4,10 +4,10 @@
 !.env.example
 *.pem
 *.key
-# Private user documents
-resumes/
-uploads/
-private-data/
+# Private user documents (top-level folders only; code folders named "resumes" must stay tracked)
+/resumes/
+/uploads/
+/private-data/
 *.pdf
 *.docx
 *.doc
